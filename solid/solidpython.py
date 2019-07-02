@@ -16,6 +16,7 @@ import inspect
 import subprocess
 import tempfile
 
+word_boundary_re = re.compile('\W+')
 # These are features added to SolidPython but NOT in OpenSCAD.
 # Mark them for special treatment
 non_rendered_classes = ['hole', 'part']
@@ -48,6 +49,7 @@ def scad_render(scad_object, file_header=''):
     # Scan the tree for all instances of
     # IncludedOpenSCADObject, storing their strings
     include_strings = _find_include_strings(root)
+    file_header += root.render_variables()
 
     # and render the string
     includes = ''.join(include_strings) + "\n"
@@ -329,7 +331,8 @@ class OpenSCADObject(object):
         self.is_hole = False
         self.has_hole_children = False
         self.is_part_root = False
-
+        self.variables = dict()
+    
     def set_hole(self, is_hole=True):
         self.is_hole = is_hole
         return self
@@ -420,6 +423,7 @@ class OpenSCADObject(object):
         return s
 
     def _render_str_no_children(self):
+        print "I received _render_str_no_children on",self.name
         callable_name = _unsubbed_keyword(self.name)
         s = "\n" + self.modifier + callable_name + "("
         first = True
@@ -429,6 +433,7 @@ class OpenSCADObject(object):
         # but they won't compile in Python. Those have already been substituted
         # out (e.g 'or' => 'or_'). Sub them back here.
         self.params = {_unsubbed_keyword(k):v for k, v in self.params.items()}
+        print "self.params",self.params
 
         # OpenSCAD doesn't have a 'segments' argument, but it does
         # have '$fn'.  Swap one for the other
@@ -449,6 +454,7 @@ class OpenSCADObject(object):
 
         for k in all_params_sorted:
             v = self.params[k]
+            print "calling on",k,":",v
             if v is None:
                 continue
 
@@ -457,9 +463,10 @@ class OpenSCADObject(object):
             first = False
 
             if type(k) == int:
-                s += py2openscad(v)
+                s += self.py2openscad(v)
             else:
-                s += k + " = " + py2openscad(v)
+                print "non-int key",k,':',v
+                s += k + " = " + self.py2openscad(v)
 
         s += ")"
         return s
@@ -626,6 +633,51 @@ class OpenSCADObject(object):
 
         return png_data
 
+    def __setitem__(self,k,v):
+        print "setting",k,"to",v
+        self.variables[k] = v
+        return
+    def __getitem__(self,k):
+        return self.variables
+
+    def render_variables(self):
+        s = []
+        for k,v in self.variables.iteritems():
+            s.append(k+' = '+self.py2openscad(v))
+        return ';\n'.join(s+[''])
+    def py2openscad(self,o):
+        if type(o) == bool:
+            return str(o).lower()
+        if type(o) == float:
+            return "%.10f" % o
+        if type(o) == str:
+            words = word_boundary_re.split(o)
+            match = False
+            for j in words:
+                if j in self.variables.keys():
+                    match = True
+                    break
+            if match:
+                return o
+            else:
+                raise ValueError("I couldn't match any of " + str(words)
+                    + " to a variable! (variables are "+str(self.variables)+')')
+        if type(o).__name__ == "ndarray":
+            import numpy
+            return numpy.array2string(o, separator=",", threshold=1000000000)
+        if hasattr(o, "__iter__"):
+            s = "["
+            first = True
+            for i in o:
+                if not first:
+                    s += ", "
+                first = False
+                s += self.py2openscad(i)
+            s += "]"
+            return s
+        return str(o)
+
+
 
 class IncludedOpenSCADObject(OpenSCADObject):
     # Identical to OpenSCADObject, but each subclass of IncludedOpenSCADObject
@@ -664,29 +716,6 @@ class IncludedOpenSCADObject(OpenSCADObject):
 
 # now that we have the base class defined, we can do a circular import
 from . import objects
-
-def py2openscad(o):
-    if type(o) == bool:
-        return str(o).lower()
-    if type(o) == float:
-        return "%.10f" % o
-    if type(o) == str:
-        return '"' + o + '"'
-    if type(o).__name__ == "ndarray":
-        import numpy
-        return numpy.array2string(o, separator=",", threshold=1000000000)
-    if hasattr(o, "__iter__"):
-        s = "["
-        first = True
-        for i in o:
-            if not first:
-                s += ", "
-            first = False
-            s += py2openscad(i)
-        s += "]"
-        return s
-    return str(o)
-
 
 def indent(s):
     return s.replace("\n", "\n\t")
