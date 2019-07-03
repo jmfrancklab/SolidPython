@@ -49,9 +49,8 @@ def scad_render(scad_object, file_header=''):
     # Scan the tree for all instances of
     # IncludedOpenSCADObject, storing their strings
     include_strings = _find_include_strings(root)
-    file_header += root.render_variables()
+    file_header += '\n'+root.render_variables()
 
-    # and render the string
     includes = ''.join(include_strings) + "\n"
     scad_body = root._render()
     return file_header + includes + scad_body
@@ -394,6 +393,7 @@ class OpenSCADObject(object):
             # Don't immediately render hole children.
             # Add them to the parent's hole list,
             # And render after everything else
+            child.variables = self.variables
             if not render_holes and child.is_hole:
                 continue
             s += child._render(render_holes)
@@ -423,7 +423,6 @@ class OpenSCADObject(object):
         return s
 
     def _render_str_no_children(self):
-        print "I received _render_str_no_children on",self.name
         callable_name = _unsubbed_keyword(self.name)
         s = "\n" + self.modifier + callable_name + "("
         first = True
@@ -433,7 +432,6 @@ class OpenSCADObject(object):
         # but they won't compile in Python. Those have already been substituted
         # out (e.g 'or' => 'or_'). Sub them back here.
         self.params = {_unsubbed_keyword(k):v for k, v in self.params.items()}
-        print "self.params",self.params
 
         # OpenSCAD doesn't have a 'segments' argument, but it does
         # have '$fn'.  Swap one for the other
@@ -454,7 +452,6 @@ class OpenSCADObject(object):
 
         for k in all_params_sorted:
             v = self.params[k]
-            print "calling on",k,":",v
             if v is None:
                 continue
 
@@ -465,7 +462,6 @@ class OpenSCADObject(object):
             if type(k) == int:
                 s += self.py2openscad(v)
             else:
-                print "non-int key",k,':',v
                 s += k + " = " + self.py2openscad(v)
 
         s += ")"
@@ -614,12 +610,12 @@ class OpenSCADObject(object):
         tmp = tempfile.NamedTemporaryFile(suffix=".scad", delete=False)
         tmp_png = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         try:
-            scad_text = scad_render(self).encode("utf-8")
+            scad_text = scad_render(self,file_header='$fs = 0.1;$fa = 5;').encode("utf-8")
             tmp.write(scad_text)
             tmp.close()
             tmp_png.close()
             subprocess.Popen([
-                "openscad",
+                os.path.normpath('c:/Program Files/OpenSCAD/openscad.exe'),
                 "--preview",
                 "-o", tmp_png.name,
                 tmp.name
@@ -630,7 +626,6 @@ class OpenSCADObject(object):
         finally:
             os.unlink(tmp.name)
             os.unlink(tmp_png.name)
-
         return png_data
 
     def __setitem__(self,k,v):

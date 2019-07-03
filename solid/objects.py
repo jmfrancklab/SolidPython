@@ -167,13 +167,15 @@ class union(OpenSCADObject):
     '''
     def __init__(self):
         OpenSCADObject.__init__(self, 'union', {})
+        self.variables = dict()
 
     def __add__(self, x):
         new_union = union()
         for child in self.children:
             new_union.add(child)
+            new_union.variables.update(child.variables)
         new_union.add(x)
-        
+        new_union.variables.update(x.variables)
         return new_union
 
 class intersection(OpenSCADObject):
@@ -188,7 +190,9 @@ class intersection(OpenSCADObject):
         new_int = intersection()
         for child in self.children:
             new_int.add(child)
+            new_int.variables.update(child.variables)
         new_int.add(x)
+        new_int.variables.update(x.variables)
         
         return new_int
 
@@ -202,10 +206,10 @@ class difference(OpenSCADObject):
 
     def __sub__(self,x):
         new_diff = difference()
-        for child in self.children:
-            new_diff.add(child)
+        new_diff.add(self)
+        new_diff.variables.update(self.variables)
         new_diff.add(x)
-        
+        new_diff.variables.update(x.variables)
         return new_diff
 
 
