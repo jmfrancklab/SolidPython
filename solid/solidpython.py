@@ -15,8 +15,8 @@ import regex as re
 import inspect
 import subprocess
 import tempfile
+import sympy
 
-word_boundary_re = re.compile('\W+')
 # These are features added to SolidPython but NOT in OpenSCAD.
 # Mark them for special treatment
 non_rendered_classes = ['hole', 'part']
@@ -629,7 +629,6 @@ class OpenSCADObject(object):
         return png_data
 
     def __setitem__(self,k,v):
-        print "setting",k,"to",v
         self.variables[k] = v
         return
     def __getitem__(self,k):
@@ -638,29 +637,21 @@ class OpenSCADObject(object):
     def render_variables(self):
         s = []
         for k,v in self.variables.iteritems():
-            s.append(k+' = '+self.py2openscad(v))
+            s.append(self.py2openscad(k)+' = '+self.py2openscad(v))
         return ';\n'.join(s+[''])
     def py2openscad(self,o):
         if type(o) == bool:
             return str(o).lower()
-        if type(o) == float:
+        elif type(o) == float:
             return "%.10f" % o
-        if type(o) == str:
-            words = word_boundary_re.split(o)
-            match = False
-            for j in words:
-                if j in self.variables.keys():
-                    match = True
-                    break
-            if match:
-                return o
-            else:
-                raise ValueError("I couldn't match any of " + str(words)
-                    + " to a variable! (variables are "+str(self.variables)+')')
-        if type(o).__name__ == "ndarray":
+        elif type(o) == str:
+            return '"' + o + '"'
+        elif isinstance(o,sympy.Expr):
+            return str(o)
+        elif type(o).__name__ == "ndarray":
             import numpy
             return numpy.array2string(o, separator=",", threshold=1000000000)
-        if hasattr(o, "__iter__"):
+        elif hasattr(o, "__iter__"):
             s = "["
             first = True
             for i in o:
@@ -671,9 +662,6 @@ class OpenSCADObject(object):
             s += "]"
             return s
         return str(o)
-
-
-
 class IncludedOpenSCADObject(OpenSCADObject):
     # Identical to OpenSCADObject, but each subclass of IncludedOpenSCADObject
     # represents imported scad code, so each instance needs to store the path
